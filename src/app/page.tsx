@@ -174,7 +174,7 @@ export default function Home() {
               className="h-9 w-9 rounded-xl2 object-contain border border-black/5 dark:border-white/10 bg-transparent"
             />
             <div className="hidden h-9 w-9 rounded-xl2 bg-gradient-to-br from-indigo-500 to-emerald-500 shadow-card" />
-            <h1 className="text-lg md:text-xl font-extrabold tracking-tight">Tokat Panel</h1>
+            <h1 className="text-lg md:text-xl font-extrabold tracking-tight">Tokat Muhtar Paneli</h1>
           </div>
 
           {/* Kontroller */}
