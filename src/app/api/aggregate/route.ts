@@ -1,4 +1,33 @@
 export const runtime = 'nodejs';
+
+function normalize(tr: string) {
+  return (tr || '')
+    .toLowerCase()
+    .replace(/ç/g,'c').replace(/ğ/g,'g').replace(/ı/g,'i')
+    .replace(/ö/g,'o').replace(/ş/g,'s').replace(/ü/g,'u');
+}
+
+const TAG_RULES: Record<string, string[]> = {
+  "Belediye": ["belediye","baskan","meclis","ihale","temizlik","zabıta","park","imar"],
+  "Valilik/Emniyet": ["valilik","vali","emniyet","jandarma","trafik","asayis","uyari","yasak"],
+  "AFAD/Deprem": ["afad","deprem","sarsinti","tatbikat","acil durum"],
+  "Egitim": ["okul","universite","meb","ogretmen","ogrenci","sinav","ders"],
+  "Saglik": ["hastane","saglik","eczane","doktor","ambulans","aşi","aşı"],
+  "Spor": ["spor","mac","lig","futbol","basketbol","voleybol","skor"],
+  "Ekonomi": ["esnaf","pazar","fiyat","zam","yatirim","istihdam","kredi","ihracat"],
+  "Duyuru": ["duyuru","aciklama","basin","etkinlik","festival","konser","tören"]
+};
+
+function autoTags(title: string, snippet: string, source: string) {
+  const hay = normalize(`${title} ${snippet} ${source}`);
+  const hits: string[] = [];
+  for (const [tag, kws] of Object.entries(TAG_RULES)) {
+    if (kws.some(k => hay.includes(normalize(k)))) hits.push(tag);
+  }
+  // Tokat odak etiketi
+  if (hay.includes("tokat")) hits.unshift("Tokat");
+  return Array.from(new Set(hits));
+}
 import Parser from 'rss-parser';
 import { sources } from '../../../sources'; // dikkat: 3 kez '..'
 
@@ -11,7 +40,9 @@ type FeedItem = {
   publishedAt: string;
   snippet?: string;
   media?: string;
+  tags?: string[];
 };
+
 
 export async function GET() {
   const rssList: string[] = sources.rss || [];
@@ -27,15 +58,17 @@ export async function GET() {
       //const text = ((i.title || '') + ' ' + (i.contentSnippet || '')).toLowerCase();
         //if (!text.includes('tokat')) continue;
         all.push({
-          source: sourceName,
-          title: i.title || '(Untitled)',
-          link: i.link || url,
-          publishedAt: i.pubDate
-            ? new Date(i.pubDate).toISOString()
-            : new Date().toISOString(),
-          snippet: (i as any).contentSnippet || (i as any).content || '',
-          media: (i as any).enclosure?.url || undefined,
-        });
+  source: sourceName,
+  title: i.title || '(Untitled)',
+  link: i.link || url,
+  publishedAt: i.pubDate
+    ? new Date(i.pubDate).toISOString()
+    : new Date().toISOString(),
+  snippet: (i as any).contentSnippet || (i as any).content || '',
+  media: (i as any).enclosure?.url || undefined,
+  // NEW:
+  tags: autoTags(i.title || '', (i as any).contentSnippet || (i as any).content || '', sourceName)
+} as any);
       }
     } catch (e) {
       console.error('RSS error', url, e);
@@ -50,6 +83,7 @@ for (const it of all) {
   seen.add(key);
   uniq.push(it);
 }
+
 const items = uniq.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
 return new Response(JSON.stringify({ items }), {
   headers: { 'Content-Type': 'application/json' }
