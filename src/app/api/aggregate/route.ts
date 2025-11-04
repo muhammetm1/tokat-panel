@@ -1,5 +1,11 @@
 export const runtime = 'nodejs';
 
+import Parser from 'rss-parser';
+import { newsSources } from '../../../sources';
+
+export const revalidate = 0;
+
+// Normalize function
 function normalize(tr: string) {
   return (tr || '')
     .toLowerCase()
@@ -7,31 +13,34 @@ function normalize(tr: string) {
     .replace(/ö/g,'o').replace(/ş/g,'s').replace(/ü/g,'u');
 }
 
+// Auto-tag rules
 const TAG_RULES: Record<string, string[]> = {
   "Belediye": ["belediye","baskan","meclis","ihale","temizlik","zabıta","park","imar"],
   "Valilik/Emniyet": ["valilik","vali","emniyet","jandarma","trafik","asayis","uyari","yasak"],
   "AFAD/Deprem": ["afad","deprem","sarsinti","tatbikat","acil durum"],
-  "Egitim": ["okul","universite","meb","ogretmen","ogrenci","sinav","ders"],
-  "Saglik": ["hastane","saglik","eczane","doktor","ambulans","aşi","aşı"],
+  "Eğitim": ["okul","universite","meb","ogretmen","ogrenci","sinav","ders"],
+  "Sağlık": ["hastane","saglik","eczane","doktor","ambulans","aşı","asi"],
   "Spor": ["spor","mac","lig","futbol","basketbol","voleybol","skor"],
   "Ekonomi": ["esnaf","pazar","fiyat","zam","yatirim","istihdam","kredi","ihracat"],
   "Duyuru": ["duyuru","aciklama","basin","etkinlik","festival","konser","tören"]
 };
 
+// Auto tagging per item
 function autoTags(title: string, snippet: string, source: string) {
   const hay = normalize(`${title} ${snippet} ${source}`);
   const hits: string[] = [];
+
   for (const [tag, kws] of Object.entries(TAG_RULES)) {
-    if (kws.some(k => hay.includes(normalize(k)))) hits.push(tag);
+    if (kws.some(k => hay.includes(normalize(k)))) {
+      hits.push(tag);
+    }
   }
-  // Tokat odak etiketi
+
+  // İl filtresi
   if (hay.includes("tokat")) hits.unshift("Tokat");
+
   return Array.from(new Set(hits));
 }
-import Parser from 'rss-parser';
-import { sources } from '../../../sources'; // dikkat: 3 kez '..'
-
-export const revalidate = 0;
 
 type FeedItem = {
   source: string;
@@ -43,55 +52,50 @@ type FeedItem = {
   tags?: string[];
 };
 
-
 export async function GET() {
-  const rssList: string[] = sources.rss || [];
   const parser = new Parser();
-  const all: FeedItem[] = [];
+  const collected: FeedItem[] = [];
 
-  for (const url of rssList) {
+  for (const url of newsSources) {
     try {
       const feed = await parser.parseURL(url);
-      const sourceName = feed.title || url;
+      const src = feed.title || url;
 
       for (const i of feed.items || []) {
-      //const text = ((i.title || '') + ' ' + (i.contentSnippet || '')).toLowerCase();
-        //if (!text.includes('tokat')) continue;
-        all.push({
-  source: sourceName,
-  title: i.title || '(Untitled)',
-  link: i.link || url,
-  publishedAt: i.pubDate
-    ? new Date(i.pubDate).toISOString()
-    : new Date().toISOString(),
-  snippet: (i as any).contentSnippet || (i as any).content || '',
-  media: (i as any).enclosure?.url || undefined,
-  // NEW:
-  tags: autoTags(i.title || '', (i as any).contentSnippet || (i as any).content || '', sourceName)
-} as any);
+        const title = i.title || '(Başlıksız)';
+        const snippet = (i as any).contentSnippet || (i as any).content || '';
+        const link = i.link || url;
+
+        collected.push({
+          source: src,
+          title,
+          link,
+          snippet,
+          publishedAt: i.pubDate
+            ? new Date(i.pubDate).toISOString()
+            : new Date().toISOString(),
+          media: (i as any).enclosure?.url || undefined,
+          tags: autoTags(title, snippet, src)
+        });
       }
-    } catch (e) {
-      console.error('RSS error', url, e);
+    } catch (err) {
+      console.error('RSS error @', url, err);
     }
   }
-    // dedupe by normalized title+link
-const seen = new Set<string>();
-const uniq = [];
-for (const it of all) {
-  const key = (it.title + '|' + it.link).toLowerCase().trim();
-  if (seen.has(key)) continue;
-  seen.add(key);
-  uniq.push(it);
-}
 
-const items = uniq.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
-return new Response(JSON.stringify({ items }), {
-  headers: { 'Content-Type': 'application/json' }
-});
+  // Dedupe
+  const seen = new Set<string>();
+  const uniq: FeedItem[] = [];
 
-  all.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
+  for (const it of collected) {
+    const key = normalize(`${it.title}|${it.link}`);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(it);
+  }
 
-  return new Response(JSON.stringify({ items: all }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  // Sort newest first
+  uniq.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
+
+  return Response.json({ items: uniq });
 }

@@ -2,5 +2,17 @@
   "rss": [
     "https://www.hurriyet.com.tr/rss/yerel/tokat",
     "https://www.sabah.com.tr/rss/yerel/tokat"
+  ],
+  "official": [
+ 
+    "https://www.tokat.bel.tr/duyurular/rss", 
+    "https://www.tokat.gov.tr/duyurular/rss"
+  ],
+  "twitterEmbeds": [
+
+    "tokatvaliligi",
+    "tokatbelediye",
+    "tokat_emniyet",
+    "AFADTURKIYE"
   ]
 }
